@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Strategie-Check Profi</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f4; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; background: white; margin-top: 20px; }
+        th, td { padding: 12px; border: 1px solid #ddd; text-align: center; }
+        th { background: #333; color: white; }
+        .pos { color: green; font-weight: bold; }
+        .neg { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h2>🚀 Anlage-Strategie Check (38/60 Tage & 3 Jahre)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Wertpapier</th>
+                <th>Preis (USD)</th>
+                <th>Trend 38T (%)</th>
+                <th>Trend 60T (%)</th>
+                <th>3J Performance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in stocks %}
+            <tr>
+                <td><strong>{{ s.name }}</strong><br><small>{{ s.isin }}</small></td>
+                <td>{{ s.price }}</td>
+                <td class="{{ 'pos' if s.dist38 > 0 else 'neg' }}">{{ s.dist38 }}%</td>
+                <td class="{{ 'pos' if s.dist60 > 0 else 'neg' }}">{{ s.dist60 }}%</td>
+                <td class="{{ 'pos' if s.perf3y > 0 else 'neg' }}">{{ s.perf3y }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
