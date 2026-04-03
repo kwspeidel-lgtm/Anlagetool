@@ -1,25 +1,28 @@
 import os
 from flask import Flask, render_template, request
 import yfinance as yf
+import pandas as pd
 
 app = Flask(__name__)
 
+# Diese Funktion ist jetzt identisch mit der stabilen Ur-Version
 def get_stock_data(symbol):
     try:
-        # Wir laden 4 Jahre Daten, um sicherzugehen
+        # Wir erzwingen das Herunterladen der Daten
         ticker = yf.Ticker(symbol.strip().upper())
-        hist = ticker.history(period="4y")
+        hist = ticker.history(period="5y") # Viel Puffer für SMA und 3J
         
-        if hist.empty or len(hist) < 60:
+        if hist.empty or len(hist) < 200:
             return None
             
         current_price = hist['Close'].iloc[-1]
-        # SMA Berechnungen
+        
+        # SMAs wie in deiner ersten funktionierenden Version
         sma38 = hist['Close'].rolling(window=38).mean().iloc[-1]
         sma60 = hist['Close'].rolling(window=60).mean().iloc[-1]
         
-        # 3-Jahres Performance (ca. 750 Handelstage)
-        price_3y_ago = hist['Close'].iloc[-750] if len(hist) > 750 else hist['Close'].iloc[0]
+        # 3-Jahres Performance (ca. 756 Handelstage)
+        price_3y_ago = hist['Close'].iloc[-756] if len(hist) > 756 else hist['Close'].iloc[0]
         perf3y = ((current_price / price_3y_ago) - 1) * 100
         
         return {
@@ -29,21 +32,24 @@ def get_stock_data(symbol):
             "dist60": round(((current_price / sma60) - 1) * 100, 2),
             "perf3y": round(perf3y, 2)
         }
-    except:
+    except Exception as e:
+        print(f"Fehler bei {symbol}: {e}")
         return None
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    # Wir starten mit Apple, damit man sofort sieht, ob es geht
-    display_list = ["AAPL"] 
+    # Wir nutzen wieder die feste Liste als Basis (wie in Version 1)
+    # So ist die Tabelle nie leer!
+    tickers = ["ABT", "AAPL", "MSFT"]
     
     if request.method == 'POST':
         user_input = request.form.get('ticker')
         if user_input:
-            display_list.insert(0, user_input.upper())
+            # Die Suche wird zur festen Liste hinzugefügt
+            tickers.insert(0, user_input.upper())
 
     results = []
-    for s in display_list:
+    for s in tickers:
         data = get_stock_data(s)
         if data:
             results.append(data)
