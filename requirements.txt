@@ -1,12 +1,7 @@
-# Render Python Version
-python-3.10.12
-
-# Core Web Framework
 Flask==3.0.0
-gunicorn==21.2.0
-
-# Data Analysis (Stable Versions)
-pandas==2.1.1
 yfinance==0.2.37
+pandas==2.1.1
+gunicorn==21.2.0
 lxml==4.9.3
 requests==2.31.0
+numpy==1.26.0
