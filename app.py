@@ -1,64 +1,54 @@
 import os
 from flask import Flask, render_template, request
 import yfinance as yf
-import pandas as pd
 
 app = Flask(__name__)
 
 def get_stock_data(symbol):
     try:
-        # Ticker säubern
-        s = symbol.strip().upper()
-        ticker = yf.Ticker(s)
+        # Wir laden 4 Jahre Daten, um sicherzugehen
+        ticker = yf.Ticker(symbol.strip().upper())
+        hist = ticker.history(period="4y")
         
-        # WICHTIG: Nur 1 Jahr Historie für SMA (schneller!)
-        # Für die 3J-Performance machen wir eine separate, kurze Abfrage
-        hist = ticker.history(period="1y")
-        hist_3y = ticker.history(period="3y")
-
-        if hist.empty:
+        if hist.empty or len(hist) < 60:
             return None
             
         current_price = hist['Close'].iloc[-1]
-        
-        # SMA Berechnung
+        # SMA Berechnungen
         sma38 = hist['Close'].rolling(window=38).mean().iloc[-1]
         sma60 = hist['Close'].rolling(window=60).mean().iloc[-1]
         
-        # 3-Jahres Performance
-        price_3y_ago = hist_3y['Close'].iloc[0] if not hist_3y.empty else current_price
+        # 3-Jahres Performance (ca. 750 Handelstage)
+        price_3y_ago = hist['Close'].iloc[-750] if len(hist) > 750 else hist['Close'].iloc[0]
         perf3y = ((current_price / price_3y_ago) - 1) * 100
         
         return {
-            "name": s,
+            "name": symbol.upper(),
             "price": round(current_price, 2),
             "dist38": round(((current_price / sma38) - 1) * 100, 2),
             "dist60": round(((current_price / sma60) - 1) * 100, 2),
             "perf3y": round(perf3y, 2)
         }
-    except Exception as e:
-        print(f"Fehler: {e}")
+    except:
         return None
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    # Wir starten mit einer leeren Liste oder festen Werten
-    stocks = []
+    # Wir starten mit Apple, damit man sofort sieht, ob es geht
+    display_list = ["AAPL"] 
     
     if request.method == 'POST':
         user_input = request.form.get('ticker')
         if user_input:
-            data = get_stock_data(user_input)
-            if data:
-                stocks.append(data)
-    
-    # Standardwerte laden (optional)
-    for default in ["ABT", "AAPL"]:
-        if not any(s['name'] == default for s in stocks):
-            d = get_stock_data(default)
-            if d: stocks.append(d)
+            display_list.insert(0, user_input.upper())
 
-    return render_template('index.html', stocks=stocks)
+    results = []
+    for s in display_list:
+        data = get_stock_data(s)
+        if data:
+            results.append(data)
+            
+    return render_template('index.html', stocks=results)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
