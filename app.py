@@ -7,55 +7,62 @@ app = Flask(__name__)
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    # 1. Standard-Liste (wird immer angezeigt, wenn nichts gesucht wird)
-    tickers = ["ABT", "AAPL", "MSFT"]
+    # Wir starten mit einer Liste
+    tickers = ["AAPL", "ABT", "MSFT"]
     
-    # 2. Wenn du einen Einzelwert eingibst
     if request.method == 'POST':
         user_input = request.form.get('ticker')
         if user_input:
-            # Wir machen aus deinem Einzelwert eine Liste, damit yf.download stabil bleibt
             tickers = [user_input.strip().upper()]
 
     results = []
     try:
-        # 3. Der Batch-Download (Wichtig: threads=False für Render-Stabilität)
-        data = yf.download(tickers, period="5y", group_by='ticker', progress=False, threads=False)
+        # Wir nutzen 'yfinance' direkt als Download-Manager mit festem Intervall
+        # Das 'auto_adjust=True' hilft oft gegen leere Datenfelder
+        data = yf.download(
+            tickers=tickers, 
+            period="5y", 
+            group_by='ticker', 
+            auto_adjust=True, 
+            prepost=False, 
+            threads=False, 
+            proxy=None
+        )
 
         if data.empty:
-            return render_template('index.html', stocks=[{"name": "Keine Daten gefunden", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}])
+            return render_template('index.html', stocks=[{"name": "Yahoo Blockade aktiv", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}])
 
         for s in tickers:
-            # Logik für die Daten-Extraktion (Unterscheidung Batch vs. Einzelwert)
-            if len(tickers) > 1:
-                ticker_df = data[s]
-            else:
-                ticker_df = data
-
-            if not ticker_df.empty and 'Close' in ticker_df:
-                # Entferne leere Zeilen (Wochenenden/Feiertage)
-                close_prices = ticker_df['Close'].dropna()
+            # Sicherheitscheck: Ist der Ticker im Ergebnis-Datenrahmen?
+            ticker_df = data[s] if len(tickers) > 1 else data
+            
+            if not ticker_df.empty:
+                # Wir nehmen die 'Close' Spalte (oder 'Close' falls vorhanden)
+                col = 'Close' if 'Close' in ticker_df.columns else ticker_df.columns[0]
+                close_prices = ticker_df[col].dropna()
                 
                 if len(close_prices) > 60:
-                    current_price = float(close_prices.iloc[-1])
-                    sma38 = float(close_prices.rolling(window=38).mean().iloc[-1])
-                    sma60 = float(close_prices.rolling(window=60).mean().iloc[-1])
+                    curr = float(close_prices.iloc[-1])
+                    s38 = float(close_prices.rolling(window=38).mean().iloc[-1])
+                    s60 = float(close_prices.rolling(window=60).mean().iloc[-1])
                     
-                    # 3-Jahres Performance (ca. 756 Handelstage)
-                    p3y_idx = -756 if len(close_prices) > 756 else 0
-                    price_3y_ago = float(close_prices.iloc[p3y_idx])
-                    perf3y = ((current_price / price_3y_ago) - 1) * 100
+                    # 3-Jahre (750 Tage)
+                    old_idx = -750 if len(close_prices) > 750 else 0
+                    old_price = float(close_prices.iloc[old_idx])
                     
                     results.append({
                         "name": s,
-                        "price": round(current_price, 2),
-                        "dist38": round(((current_price / sma38) - 1) * 100, 2),
-                        "dist60": round(((current_price / sma60) - 1) * 100, 2),
-                        "perf3y": round(perf3y, 2)
+                        "price": round(curr, 2),
+                        "dist38": round(((curr / s38) - 1) * 100, 2),
+                        "dist60": round(((curr / s60) - 1) * 100, 2),
+                        "perf3y": round(((curr / old_price) - 1) * 100, 2)
                     })
+
     except Exception as e:
-        print(f"Fehler: {e}")
-        results = [{"name": f"Fehler: {str(e)[:15]}", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}]
+        results = [{"name": f"Error: {str(e)[:15]}", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}]
+
+    if not results:
+        results = [{"name": "Keine Daten (Timeout)", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}]
 
     return render_template('index.html', stocks=results)
 
