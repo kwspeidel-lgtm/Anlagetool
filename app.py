@@ -1,5 +1,4 @@
 import os
-import time
 from flask import Flask, render_template, request
 import yfinance as yf
 import pandas as pd
@@ -7,79 +6,61 @@ import pandas as pd
 app = Flask(__name__)
 
 def get_stock_data(symbol):
-    symbol = symbol.strip().upper()
-
-    hist = None
-
-    # 🔁 Retry-Logik (Yahoo ist oft instabil)
-    for attempt in range(3):
-        try:
-            hist = yf.download(symbol, period="5y", progress=False)
-
-            print(f"{symbol}: Versuch {attempt+1} → {len(hist)} Datenpunkte")
-
-            if hist is not None and not hist.empty:
-                break
-
-        except Exception as e:
-            print(f"{symbol}: Fehler bei Versuch {attempt+1}: {e}")
-
-        time.sleep(1)
-
-    # ❌ Wenn keine Daten → abbrechen
-    if hist is None or hist.empty or len(hist) < 200:
-        print(f"{symbol}: keine brauchbaren Daten")
-        return None
-
     try:
-        hist = hist.dropna()
-
+        s = symbol.strip().upper()
+        # Erstelle das Ticker-Objekt
+        ticker = yf.Ticker(s)
+        
+        # Test: Wir laden erst mal nur 1 Jahr (geht am schnellsten)
+        hist = ticker.history(period="1y")
+        
+        if hist.empty:
+            # Replit-Style Diagnose: Wir geben eine Info-Zeile zurück
+            return {"name": f"{s} (Yahoo blockt)", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}
+            
         current_price = hist['Close'].iloc[-1]
-
-        # 📊 SMAs
+        
+        # SMAs berechnen
         sma38 = hist['Close'].rolling(window=38).mean().iloc[-1]
         sma60 = hist['Close'].rolling(window=60).mean().iloc[-1]
-
-        # 📈 3-Jahres Performance (~756 Handelstage)
-        if len(hist) > 756:
-            price_3y_ago = hist['Close'].iloc[-756]
-        else:
-            price_3y_ago = hist['Close'].iloc[0]
-
-        perf3y = ((current_price / price_3y_ago) - 1) * 100
-
+        
+        # Performance 3 Jahre (separater kurzer Check)
+        hist_3y = ticker.history(period="3y")
+        p3y_start = hist_3y['Close'].iloc[0] if not hist_3y.empty else current_price
+        perf3y = ((current_price / p3y_start) - 1) * 100
+        
         return {
-            "name": symbol,
+            "name": s,
             "price": round(current_price, 2),
-            "dist38": round(((current_price / sma38) - 1) * 100, 2),
-            "dist60": round(((current_price / sma60) - 1) * 100, 2),
+            "dist38": round(((current_price/sma38)-1)*100, 2),
+            "dist60": round(((current_price/sma60)-1)*100, 2),
             "perf3y": round(perf3y, 2)
         }
-
     except Exception as e:
-        print(f"{symbol}: Fehler in Berechnung: {e}")
-        return None
-
+        # Zeigt den technischen Fehler direkt in der Tabelle an
+        error_msg = str(e)[:20]
+        return {"name": f"Fehler: {error_msg}", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    tickers = ["ABT", "AAPL", "MSFT"]
-
+    # Wir starten mit Apple (AAPL) als Test-Anker
+    tickers = ["AAPL"]
+    
     if request.method == 'POST':
         user_input = request.form.get('ticker')
         if user_input:
-            tickers.insert(0, user_input.strip().upper())
+            # Wenn du suchst, schieben wir das Ergebnis ganz nach oben
+            tickers.insert(0, user_input.upper())
 
     results = []
-
-    for s in tickers:
-        data = get_stock_data(s)
+    for t in tickers:
+        data = get_stock_data(t)
         if data:
             results.append(data)
-
+            
     return render_template('index.html', stocks=results)
 
-
 if __name__ == "__main__":
+    # Wichtig für Render: Port-Zuweisung
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
