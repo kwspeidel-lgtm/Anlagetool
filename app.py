@@ -5,61 +5,60 @@ import pandas as pd
 
 app = Flask(__name__)
 
-def get_stock_data(query):
+def get_stock_data(symbol):
     try:
-        symbol = query.strip().upper()
-        # Den Ticker erstellen
-        t = yf.Ticker(symbol)
+        # Ticker säubern
+        s = symbol.strip().upper()
+        ticker = yf.Ticker(s)
         
-        # WICHTIG: Wir erzwingen den Download mit period="5y"
-        # yfinance braucht manchmal einen Moment oder mehrere Versuche
-        hist = t.history(period="5y")
-        
-        if hist.empty or len(hist) < 100:
+        # WICHTIG: Nur 1 Jahr Historie für SMA (schneller!)
+        # Für die 3J-Performance machen wir eine separate, kurze Abfrage
+        hist = ticker.history(period="1y")
+        hist_3y = ticker.history(period="3y")
+
+        if hist.empty:
             return None
             
-        # Letzte Zeile (heute)
-        last_row = hist.iloc[-1]
-        current_price = last_row['Close']
+        current_price = hist['Close'].iloc[-1]
         
-        # SMA Berechnung (38 und 60 Tage)
+        # SMA Berechnung
         sma38 = hist['Close'].rolling(window=38).mean().iloc[-1]
         sma60 = hist['Close'].rolling(window=60).mean().iloc[-1]
         
-        # 3-Jahres Performance (ca. 750 Handelstage zurück)
-        # Wir nehmen den Kurs von vor genau 3 Jahren
-        price_3y_ago = hist['Close'].iloc[-750] if len(hist) > 750 else hist['Close'].iloc[0]
+        # 3-Jahres Performance
+        price_3y_ago = hist_3y['Close'].iloc[0] if not hist_3y.empty else current_price
         perf3y = ((current_price / price_3y_ago) - 1) * 100
         
         return {
-            "name": symbol,
+            "name": s,
             "price": round(current_price, 2),
             "dist38": round(((current_price / sma38) - 1) * 100, 2),
             "dist60": round(((current_price / sma60) - 1) * 100, 2),
             "perf3y": round(perf3y, 2)
         }
     except Exception as e:
-        print(f"Fehler bei {query}: {e}")
+        print(f"Fehler: {e}")
         return None
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    results = []
-    # Teste es mal mit diesen drei Standard-Tickern
-    tickers = ["AAPL", "MSFT", "TSLA"]
+    # Wir starten mit einer leeren Liste oder festen Werten
+    stocks = []
     
     if request.method == 'POST':
         user_input = request.form.get('ticker')
         if user_input:
-            # Deine Eingabe kommt nach vorne
-            tickers.insert(0, user_input.upper())
+            data = get_stock_data(user_input)
+            if data:
+                stocks.append(data)
+    
+    # Standardwerte laden (optional)
+    for default in ["ABT", "AAPL"]:
+        if not any(s['name'] == default for s in stocks):
+            d = get_stock_data(default)
+            if d: stocks.append(d)
 
-    for symbol in tickers:
-        data = get_stock_data(symbol)
-        if data:
-            results.append(data)
-            
-    return render_template('index.html', stocks=results)
+    return render_template('index.html', stocks=stocks)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
