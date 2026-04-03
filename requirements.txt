@@ -1,6 +1,7 @@
 Flask
 yfinance
 pandas
-gunicorn app:app
+pandas-ta
+gunicorn
 lxml
 requests
