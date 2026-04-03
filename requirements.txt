@@ -1,6 +1,4 @@
-Flask==3.0.0
+Flask
+yfinance==0.2.37
 pandas==2.1.1
 numpy==1.26.0
-yfinance==0.2.37
-lxml==4.9.3
-requests==2.31.0
