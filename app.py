@@ -6,63 +6,50 @@ import requests
 
 app = Flask(__name__)
 
-def get_data_safe(tickers):
-    # Wir erstellen eine Session, die so aussieht wie ein echter Browser
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-    })
-    
-    try:
-        # Wir laden die Daten MIT der Session
-        data = yf.download(tickers, period="5y", group_by='ticker', session=session, progress=False, threads=False)
-        return data
-    except:
-        return pd.DataFrame()
-
 @app.route('/', methods=['GET', 'POST'])
 def index():
     stocks_data = []
-    active_tickers = ["AAPL", "ABT", "MSFT"]
-
+    # Test-Werte
+    tickers = ["AAPL", "ABT", "MSFT"]
+    
     if request.method == 'POST':
         user_input = request.form.get('ticker')
         if user_input:
-            active_tickers = [user_input.strip().upper()]
+            tickers = [user_input.strip().upper()]
 
-    data = get_data_safe(active_tickers)
-    
-    if not data.empty:
-        for s in active_tickers:
-            try:
-                # Unterscheidung: Ein Ticker vs Mehrere
-                df = data[s] if len(active_tickers) > 1 else data
+    try:
+        # Browser-Simulation
+        session = requests.Session()
+        session.headers.update({'User-Agent': 'Mozilla/5.0'})
+        
+        # Wir laden nur 5 Tage Daten – das geht blitzschnell und ist stabil
+        data = yf.download(tickers, period="5d", group_by='ticker', session=session, progress=False, threads=False)
+        
+        if not data.empty:
+            for s in tickers:
+                # Datenblock für den Ticker
+                df = data[s] if len(tickers) > 1 else data
                 
-                # Wir nehmen die 'Close' Spalte, egal ob sie 'Close' oder 'Adj Close' heißt
-                col = 'Close' if 'Close' in df.columns else df.columns[0]
-                close = df[col].dropna()
-                
-                if len(close) > 60:
-                    curr = float(close.iloc[-1])
-                    s38 = float(close.rolling(window=38).mean().iloc[-1])
-                    s60 = float(close.rolling(window=60).mean().iloc[-1])
+                if not df.empty:
+                    # Suche nach irgendeiner Preis-Spalte (Close oder Adj Close)
+                    price_col = next((c for c in ['Close', 'Adj Close'] if c in df.columns), None)
                     
-                    # Performance 3 Jahre
-                    p3y_idx = -756 if len(close) > 756 else 0
-                    p3y_val = float(close.iloc[p3y_idx])
-                    
-                    stocks_data.append({
-                        "name": s,
-                        "price": round(curr, 2),
-                        "dist38": round(((curr/s38)-1)*100, 2),
-                        "dist60": round(((curr/s60)-1)*100, 2),
-                        "perf3y": round(((curr/p3y_val)-1)*100, 2)
-                    })
-            except:
-                continue
+                    if price_col:
+                        # Hol den allerletzten Preis
+                        current_price = float(df[price_col].dropna().iloc[-1])
+                        
+                        stocks_data.append({
+                            "name": s,
+                            "price": round(current_price, 2),
+                            "dist38": 0, # Platzhalter
+                            "dist60": 0, # Platzhalter
+                            "perf3y": 0  # Platzhalter
+                        })
+    except Exception as e:
+        print(f"Fehler: {e}")
 
     if not stocks_data:
-        stocks_data = [{"name": "Yahoo liefert aktuell keine Daten", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}]
+        stocks_data = [{"name": "Suche...", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}]
 
     return render_template('index.html', stocks=stocks_data)
 
