@@ -2,43 +2,58 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Strategie-Check Profi</title>
     <style>
-        body { font-family: sans-serif; background: #f4f4f4; padding: 20px; }
-        .search-box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        input { padding: 10px; width: 250px; border: 1px solid #ddd; border-radius: 4px; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        table { width: 100%; border-collapse: collapse; background: white; }
-        th, td { padding: 12px; border: 1px solid #ddd; text-align: center; }
-        th { background: #333; color: white; }
-        .pos { color: green; font-weight: bold; }
-        .neg { color: red; font-weight: bold; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { color: #1a73e8; text-align: center; }
+        
+        .search-box { display: flex; justify-content: center; gap: 10px; margin-bottom: 30px; }
+        input { padding: 12px; width: 250px; border: 2px solid #dfe1e5; border-radius: 8px; font-size: 16px; }
+        input:focus { border-color: #1a73e8; outline: none; }
+        
+        button { padding: 12px 24px; background: #1a73e8; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; }
+        button:hover { background: #1557b0; }
+        button:active { transform: scale(0.98); }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 15px; border-bottom: 1px solid #eee; text-align: center; }
+        th { background: #f8f9fa; color: #5f6368; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; }
+        
+        .pos { color: #28a745; font-weight: bold; }
+        .neg { color: #d93025; font-weight: bold; }
+        .symbol-name { font-weight: bold; color: #202124; display: block; }
+        
+        #loading { display: none; text-align: center; margin-top: 10px; color: #1a73e8; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h2>🚀 Mein Strategie-Check</h2>
+
+<div class="container">
+    <h2>🚀 Aktien-Strategie Monitor</h2>
     
-    <div class="search-box">
-        <form action="/" method="POST">
-            <input type="text" name="ticker" placeholder="Ticker eingeben (z.B. AAPL, TSLA, ABT)" required>
-            <button type="submit">Aktie prüfen</button>
-        </form>
-    </div>
+    <form class="search-box" action="/" method="POST" onsubmit="showLoading()">
+        <input type="text" name="ticker" placeholder="Ticker (z.B. ABT, AAPL, TSLA)" required autocomplete="off">
+        <button type="submit">Prüfen</button>
+    </form>
+    
+    <div id="loading">⏳ Daten werden geladen...</div>
 
     <table>
         <thead>
             <tr>
-                <th>Ticker</th>
+                <th>Wertpapier</th>
                 <th>Preis (USD)</th>
-                <th>Trend 38T (%)</th>
-                <th>Trend 60T (%)</th>
-                <th>3J Performance</th>
+                <th>SMA 38 (%)</th>
+                <th>SMA 60 (%)</th>
+                <th>3J Perf.</th>
             </tr>
         </thead>
         <tbody>
             {% for s in stocks %}
             <tr>
-                <td><strong>{{ s.name }}</strong></td>
+                <td><span class="symbol-name">{{ s.name }}</span></td>
                 <td>{{ s.price }}</td>
                 <td class="{{ 'pos' if s.dist38 > 0 else 'neg' }}">{{ s.dist38 }}%</td>
                 <td class="{{ 'pos' if s.dist60 > 0 else 'neg' }}">{{ s.dist60 }}%</td>
@@ -47,5 +62,13 @@
             {% endfor %}
         </tbody>
     </table>
+</div>
+
+<script>
+    function showLoading() {
+        document.getElementById('loading').style.display = 'block';
+    }
+</script>
+
 </body>
 </html>
