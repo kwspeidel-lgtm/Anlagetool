@@ -6,50 +6,68 @@ import requests
 
 app = Flask(__name__)
 
+# Diese Funktion simuliert einen echten Browser-Besuch (Gschmäckle-Standard)
+def get_session():
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Upgrade-Insecure-Requests': '1'
+    })
+    return session
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     stocks_data = []
-    # Test-Werte
-    tickers = ["AAPL", "ABT", "MSFT"]
+    tickers = ["AAPL", "ABT", "MSFT"] # Start-Werte
     
     if request.method == 'POST':
         user_input = request.form.get('ticker')
         if user_input:
             tickers = [user_input.strip().upper()]
 
+    # Wir nutzen die Session für die gesamte Abfrage
+    session = get_session()
+    
     try:
-        # Browser-Simulation
-        session = requests.Session()
-        session.headers.update({'User-Agent': 'Mozilla/5.0'})
-        
-        # Wir laden nur 5 Tage Daten – das geht blitzschnell und ist stabil
-        data = yf.download(tickers, period="5d", group_by='ticker', session=session, progress=False, threads=False)
+        # Gschmäckle-Trick: Nutze yf.download mit der Session
+        # Wir laden nur 7 Tage (Puffer für Wochenende), um die Last minimal zu halten
+        data = yf.download(
+            tickers=tickers,
+            period="7d",
+            interval="1d",
+            session=session,
+            proxy=None,
+            progress=False,
+            threads=False,
+            group_by='ticker'
+        )
         
         if not data.empty:
             for s in tickers:
-                # Datenblock für den Ticker
+                # Datenblock-Weiche
                 df = data[s] if len(tickers) > 1 else data
                 
                 if not df.empty:
-                    # Suche nach irgendeiner Preis-Spalte (Close oder Adj Close)
-                    price_col = next((c for c in ['Close', 'Adj Close'] if c in df.columns), None)
+                    # Wir nehmen die letzte verfügbare Preis-Spalte
+                    price_col = 'Close' if 'Close' in df.columns else df.columns[0]
+                    close_prices = df[price_col].dropna()
                     
-                    if price_col:
-                        # Hol den allerletzten Preis
-                        current_price = float(df[price_col].dropna().iloc[-1])
-                        
+                    if not close_prices.empty:
+                        curr = float(close_prices.iloc[-1])
                         stocks_data.append({
                             "name": s,
-                            "price": round(current_price, 2),
-                            "dist38": 0, # Platzhalter
-                            "dist60": 0, # Platzhalter
-                            "perf3y": 0  # Platzhalter
+                            "price": round(curr, 2),
+                            "dist38": 0,
+                            "dist60": 0,
+                            "perf3y": 0
                         })
     except Exception as e:
-        print(f"Fehler: {e}")
+        print(f"Gschmäckle-Log: Fehler bei Abfrage: {e}")
 
     if not stocks_data:
-        stocks_data = [{"name": "Suche...", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}]
+        stocks_data = [{"name": "Yahoo blockiert trotz Gschmäckle-Filter", "price": 0, "dist38": 0, "dist60": 0, "perf3y": 0}]
 
     return render_template('index.html', stocks=stocks_data)
 
