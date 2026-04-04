@@ -1,13 +1,31 @@
 import yfinance as yf
 from flask import Flask, render_template_string, request, redirect
+import pandas as pd
 
 app = Flask(__name__)
 stored_results = []
 
-def get_smart_data(symbol):
-    symbol = symbol.strip().upper()
-    # Automatik für deutsche Werte, falls kein Punkt vorhanden
-    search_t = f"{symbol}.DE" if "." not in symbol and len(symbol) <= 6 else symbol
+def calculate_smart_score(rsi, price, sma38):
+    """Die zentrale Logik: Berechnet die Attraktivität (0-10)."""
+    score = 0
+    # RSI Logik (Günstigkeit)
+    if rsi < 30: score += 6  # Massiv überverkauft
+    elif rsi < 40: score += 4
+    elif rsi > 70: score -= 2 # Heißgelaufen
+    
+    # Trend Logik (SMA38)
+    diff = (price / sma38) - 1
+    if -0.05 < diff < 0: score += 4 # Perfekte Rebound-Zone
+    elif 0 < diff < 0.05: score += 2 # Trendbestätigung
+    
+    return max(0, min(10, score))
+
+def get_market_data(input_val):
+    """Holt Daten für Ticker oder WKN."""
+    t = input_val.strip().upper()
+    # Automatik für deutsche Werte (DAX/Nebenwerte)
+    search_t = f"{t}.DE" if "." not in t and len(t) <= 6 else t
+    
     try:
         stock = yf.Ticker(search_t)
         df = stock.history(period="60d")
@@ -15,18 +33,22 @@ def get_smart_data(symbol):
         
         curr = df['Close'].iloc[-1]
         sma = df['Close'].rolling(window=38).mean().iloc[-1]
+        
+        # RSI 14
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean().iloc[-1]
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean().iloc[-1]
         rsi = round(100 - (100 / (1 + (gain/loss))), 2)
         
-        score = 0
-        if rsi < 35: score += 6
-        if curr < sma: score += 4
+        score = calculate_smart_score(rsi, curr, sma)
         
         return {
-            'ticker': search_t.replace(".DE", ""), 'price': f"{curr:.2f}",
-            'rsi': rsi, 'score': min(10, score), 'status': "UNDER" if curr < sma else "OVER"
+            'ticker': search_t.replace(".DE", ""),
+            'price': f"{curr:.2f}",
+            'sma38': f"{sma:.2f}",
+            'rsi': rsi,
+            'score': score,
+            'status': "OVER" if curr > sma else "UNDER"
         }
     except: return None
 
@@ -34,16 +56,17 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BASIC Terminal - Multi-Check</title>
+    <title>BASIC Terminal - Smart Score</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: sans-serif; background: #0a0a0a; color: #eee; padding: 15px; text-align: center; }
+        body { font-family: sans-serif; background: #0a0a0a; color: #eee; padding: 10px; text-align: center; }
         .container { max-width: 450px; margin: auto; }
         .input-area { background: #161616; padding: 20px; border-radius: 15px; border: 2px solid #ffd700; margin-bottom: 20px; }
-        input { width: 80%; padding: 15px; border-radius: 10px; border: none; background: #222; color: #fff; font-size: 16px; margin-bottom: 10px; }
-        .gold-btn { background: #ffd700; color: #000; padding: 15px; border: none; border-radius: 10px; width: 100%; font-weight: bold; cursor: pointer; }
-        .card { background: #161616; padding: 15px; margin-bottom: 10px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 5px solid #444; text-align: left; }
-        .gold-card { border-left: 5px solid #ffd700 !important; }
+        input { width: 70%; padding: 12px; border-radius: 8px; border: none; background: #222; color: #fff; font-size: 16px; }
+        .gold-btn { background: #ffd700; color: #000; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .card { background: #161616; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 5px solid #444; display: flex; justify-content: space-between; align-items: center; text-align: left; }
+        .gold-card { border-left: 5px solid #ffd700 !important; background: linear-gradient(90deg, #161616, #2a2400); }
+        .score-box { text-align: center; background: #222; padding: 8px; border-radius: 8px; min-width: 50px; border: 1px solid #ffd700; }
     </style>
 </head>
 <body>
@@ -51,38 +74,41 @@ HTML_TEMPLATE = """
         <h2 style="color:#ffd700;">BASIC TERMINAL 🚀</h2>
         <div class="input-area">
             <form action="/check" method="POST">
-                <input type="text" name="symbols" placeholder="WKNs/Ticker (mit Komma getrennt)...">
-                <button type="submit" class="gold-btn">JETZT STAPELN</button>
+                <input type="text" name="symbol" placeholder="WKN oder Ticker...">
+                <button type="submit" class="gold-btn">+</button>
             </form>
         </div>
+
         {% for s in stocks %}
         <div class="card {{ 'gold-card' if s.score >= 7 else '' }}">
             <div>
-                <strong>{{ s.ticker }}</strong><br>
-                <small>{{ s.price }}€ | RSI: {{ s.rsi }}</small>
+                <strong style="font-size:1.2em;">{{ s.ticker }}</strong><br>
+                <small style="color:#aaa;">{{ s.price }}€ | RSI: {{ s.rsi }}</small><br>
+                <small style="color:{{ '#00ff88' if s.status == 'OVER' else '#ff4d4d' }}">{{ s.status }} SMA38</small>
             </div>
-            <div style="text-align:right;">
-                <div style="font-size: 1.5em; font-weight: bold; color: #ffd700;">{{ s.score }}</div>
-                <small style="color:{{ '#ff4d4d' if s.status == 'UNDER' else '#00ff88' }}">{{ s.status }} SMA38</small>
+            <div class="score-box">
+                <div style="font-size: 0.7em; color: #888;">SCORE</div>
+                <div style="font-size: 1.4em; font-weight: bold; color: #ffd700;">{{ s.score }}</div>
             </div>
         </div>
         {% endfor %}
-        <br><a href="/clear" style="color:#555; text-decoration:none;">Liste leeren</a>
+        
+        <br><a href="/clear" style="color:#444; text-decoration:none; font-size:0.8em;">Terminal leeren</a>
     </div>
 </body>
 </html>
 """
 
 @app.route('/')
-def index(): return render_template_string(HTML_TEMPLATE, stocks=stored_results)
+def index():
+    return render_template_string(HTML_TEMPLATE, stocks=stored_results)
 
 @app.route('/check', methods=['POST'])
 def check():
     global stored_results
-    raw = request.form.get('symbols', '')
-    symbols = [s.strip() for s in raw.replace(',', ' ').split()]
-    for s in symbols:
-        res = get_smart_data(s)
+    val = request.form.get('symbol', '')
+    if val:
+        res = get_market_data(val)
         if res: stored_results.insert(0, res)
     return redirect('/')
 
