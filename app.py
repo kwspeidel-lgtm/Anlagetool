@@ -6,38 +6,55 @@ stored_results = []
 
 def get_market_data(input_val):
     t = input_val.strip().upper()
-    search_t = f"{t}.DE" if "." not in t and len(t) <= 6 else t
+    
+    # LOGIK-CHECK: Ist es eine deutsche WKN (6 Zahlen) oder ein deutsches Kürzel?
+    if t.isdigit() and len(t) == 6:
+        search_t = f"{t}.DE"
+    elif len(t) <= 4 and t not in ["META", "AAPL", "MSFT", "NVDA", "TSLA", "GOOG"]:
+        # Standardmäßig .DE für kurze Kürzel, außer es sind bekannte US-Größen
+        search_t = f"{t}.DE"
+    else:
+        # Alles andere (US-Ticker oder bereits mit Punkt) direkt lassen
+        search_t = t
+
     try:
         stock = yf.Ticker(search_t)
-        df = stock.history(period="60d")
-        if df.empty or len(df) < 38: return None
+        # Wenn US-Ticker nicht gefunden, probier es ohne .DE (Fallback)
+        df = stock.history(period="65d")
+        if df.empty and ".DE" in search_t:
+            search_t = search_t.replace(".DE", "")
+            stock = yf.Ticker(search_t)
+            df = stock.history(period="65d")
+            
+        if df.empty: return None
         
-        info = stock.info
-        kgv = info.get('trailingPE', 'n/a')
-        if isinstance(kgv, (int, float)): kgv = round(kgv, 1)
-        
+        # Daten abrufen
         curr = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2]
         change_pct = ((curr / prev_close) - 1) * 100
-        
         sma = df['Close'].rolling(window=38).mean().iloc[-1]
+        
+        # RSI 14
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean().iloc[-1]
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean().iloc[-1]
-        rsi = round(100 - (100 / (1 + (gain/loss))), 2)
+        rsi = round(100 - (100 / (1 + (gain/loss))), 2) if loss > 0 else 50
         
-        rsi_color = "#00ff88" if rsi < 40 else "#ff4d4d" if rsi > 60 else "#777"
-        change_color = "#00ff88" if change_pct >= 0 else "#ff4d4d"
+        # KGV Check
+        try:
+            kgv = stock.info.get('trailingPE', 'n/a')
+            if isinstance(kgv, (int, float)): kgv = round(kgv, 1)
+        except: kgv = "n/a"
         
         return {
-            'ticker': search_t.replace(".DE", ""),
+            'ticker': search_t,
             'price': f"{curr:.2f}",
             'change': f"{change_pct:+.2f}%",
-            'change_color': change_color,
+            'change_color': "#00ff88" if change_pct >= 0 else "#ff4d4d",
             'sma38': f"{sma:.2f}",
             'kgv': kgv,
             'rsi': rsi,
-            'rsi_color': rsi_color,
+            'rsi_color': "#00ff88" if rsi < 40 else "#ff4d4d" if rsi > 60 else "#777",
             'status': "OVER" if curr > sma else "UNDER"
         }
     except: return None
@@ -51,54 +68,39 @@ HTML_TEMPLATE = """
     <style>
         body { font-family: sans-serif; background: #0a0a0a; color: #eee; padding: 15px; text-align: center; }
         .container { max-width: 500px; margin: auto; }
-        .input-area { background: #1a1a1a; padding: 25px; border-radius: 15px; border: 1px solid #333; margin-bottom: 25px; }
-        input { width: 90%; padding: 15px; background: #222; border: 1px solid #444; color: #fff; border-radius: 10px; margin-bottom: 15px; font-size: 16px; }
-        .gold-btn { background: #ffd700; color: #000; padding: 15px; border: none; border-radius: 10px; width: 95%; font-weight: bold; cursor: pointer; }
-        .card { background: #161616; padding: 20px; margin-bottom: 12px; border-radius: 12px; border-left: 4px solid #ffd700; display: flex; justify-content: space-between; align-items: center; text-align: left; }
-        .rsi-badge { padding: 5px 12px; border-radius: 6px; font-weight: bold; font-size: 0.9em; }
-        .status-text { font-weight: bold; font-size: 0.85em; margin-top: 5px; }
-        .kgv-tag { color: #888; font-size: 0.8em; margin-left: 10px; }
+        .input-area { background: #1a1a1a; padding: 20px; border-radius: 15px; border: 1px solid #333; margin-bottom: 20px; }
+        input { width: 85%; padding: 15px; background: #222; border: 1px solid #444; color: #fff; border-radius: 10px; margin-bottom: 10px; font-size: 16px; }
+        .gold-btn { background: #ffd700; color: #000; padding: 15px; border: none; border-radius: 10px; width: 90%; font-weight: bold; cursor: pointer; }
+        .card { background: #161616; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 4px solid #ffd700; display: flex; justify-content: space-between; align-items: center; text-align: left; }
+        .rsi-badge { padding: 5px 10px; border-radius: 6px; font-weight: bold; }
     </style>
     <script>
-        function copyTerminalData() {
+        function copyData() {
             let cards = document.querySelectorAll('.card');
-            let textToCopy = "TERMINAL EXPORT:\\n";
-            cards.forEach(card => {
-                let ticker = card.querySelector('strong').innerText;
-                let price = card.querySelector('.p-line').innerText;
-                let rsi = card.querySelector('.rsi-badge').innerText;
-                textToCopy += ticker + ": " + price + " | " + rsi + "\\n";
-            });
-            navigator.clipboard.writeText(textToCopy);
-            alert("Kopiert für KI!");
+            let txt = "TERMINAL EXPORT:\\n";
+            cards.forEach(c => { txt += c.innerText.replace(/\\n/g, " ") + "\\n"; });
+            navigator.clipboard.writeText(txt); alert("Kopiert!");
         }
     </script>
 </head>
 <body>
     <div class="container">
-        <h2 onclick="copyTerminalData()" style="color:#ffd700; cursor:pointer;">PRO TERMINAL 🚀</h2>
-        <div class="input-area">
-            <form action="/stack" method="POST">
-                <input type="text" name="symbol" placeholder="WKN / Ticker..." required>
-                <button type="submit" class="gold-btn">STAPELN</button>
-            </form>
-        </div>
+        <h2 onclick="copyData()" style="color:#ffd700; cursor:pointer;">PRO TERMINAL 🚀</h2>
+        <form class="input-area" action="/stack" method="POST">
+            <input type="text" name="symbol" placeholder="WKN (716460) oder Ticker (META)..." required>
+            <button type="submit" class="gold-btn">STAPELN</button>
+        </form>
         {% for s in stocks %}
         <div class="card">
             <div>
-                <strong>{{ s.ticker }}</strong><span class="kgv-tag">KGV: {{ s.kgv }}</span><br>
-                <div class="p-line" style="color:#fff; font-weight:bold; margin-top:3px;">
-                    {{ s.price }}€ <span style="color:{{ s.change_color }}; font-size:0.8em;">({{ s.change }})</span>
-                </div>
-                <div class="status-text" style="color:{{ '#00ff88' if s.status == 'OVER' else '#ff4d4d' }}">{{ s.status }} SMA38</div>
-                <small style="color:#555;">SMA: {{ s.sma38 }}</small>
+                <strong>{{ s.ticker }}</strong> <small style="color:#888;">KGV: {{ s.kgv }}</small><br>
+                <span style="font-weight:bold;">{{ s.price }} <small style="color:{{ s.change_color }};">({{ s.change }})</small></span><br>
+                <small style="color:{{ '#00ff88' if s.status == 'OVER' else '#ff4d4d' }}; font-weight:bold;">{{ s.status }} SMA38</small>
             </div>
-            <div style="text-align:right;">
-                <div class="rsi-badge" style="background:{{ s.rsi_color }}; color:#000;">RSI: {{ s.rsi }}</div>
-            </div>
+            <div class="rsi-badge" style="background:{{ s.rsi_color }}; color:#000;">RSI: {{ s.rsi }}</div>
         </div>
         {% endfor %}
-        <br><a href="/clear" style="color:#444; text-decoration:none; font-size:0.8em;">Leeren</a>
+        <br><a href="/clear" style="color:#444; text-decoration:none;">Leeren</a>
     </div>
 </body>
 </html>
