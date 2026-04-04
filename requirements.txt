@@ -1,5 +1,5 @@
-Flask>=2.3
+flask
+yfinance
 pandas
-yfinance>=0.2.38
-gunicorn
-requests
+Pillow
+pytesseract
