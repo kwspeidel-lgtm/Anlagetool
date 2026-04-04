@@ -2,43 +2,74 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aktien-Radar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aktien-Radar Pro</title>
     <style>
-        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f9; }
-        table { border-collapse: collapse; width: 100%; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background-color: #333; color: white; }
+        body { font-family: -apple-system, sans-serif; margin: 10px; background: #f0f2f5; color: #1c1e21; }
+        .card { background: white; padding: 15px; border-radius: 12px; shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .input-group { display: flex; gap: 8px; margin-bottom: 15px; }
+        input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
+        button { padding: 12px; background: #007bff; color: white; border: none; border-radius: 8px; font-weight: bold; }
+        .btn-copy { background: #6c757d; width: 100%; margin-top: 10px; }
+        .table-container { overflow-x: auto; background: white; border-radius: 12px; }
+        table { width: 100%; border-collapse: collapse; min-width: 500px; }
+        th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background: #f8f9fa; color: #666; text-transform: uppercase; font-size: 11px; }
         .pos { color: #28a745; font-weight: bold; }
         .neg { color: #dc3545; font-weight: bold; }
-        input[type="text"] { padding: 8px; width: 200px; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .rsi-warn { color: #fd7e14; font-weight: bold; } /* RSI Überkauft Orange */
     </style>
 </head>
 <body>
-    <h2>Aktien-Check Live</h2>
-    <form method="POST">
-        <input type="text" name="ticker" placeholder="Ticker eingeben (z.B. MSFT)" required>
-        <button type="submit">Abfrage</button>
+
+<div class="card">
+    <form method="POST" class="input-group">
+        <input type="text" name="ticker" placeholder="Ticker (z.B. AAPL SAP)" required>
+        <button type="submit">Check</button>
     </form>
-    <br>
-    <table>
-        <tr>
-            <th>Ticker</th>
-            <th>Preis</th>
-            <th>Abstand SMA38</th>
-            <th>Abstand SMA60</th>
-            <th>3-Jahre (%)</th>
-        </tr>
-        {% for s in stocks %}
-        <tr>
-            <td><strong>{{ s.name }}</strong></td>
-            <td>{{ s.price }}</td>
-            <td class="{{ 'pos' if s.dist38 >= 0 else 'neg' }}">{{ s.dist38 }}%</td>
-            <td class="{{ 'pos' if s.dist60 >= 0 else 'neg' }}">{{ s.dist60 }}%</td>
-            <td class="{{ 'pos' if s.perf3y >= 0 else 'neg' }}">{{ s.perf3y }}%</td>
-        </tr>
-        {% endfor %}
+    <button class="btn-copy" onclick="copyForAI()">📋 Daten für KI kopieren</button>
+</div>
+
+<div class="table-container">
+    <table id="stockTable">
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th>Preis</th>
+                <th>SMA38 %</th>
+                <th>RSI</th>
+                <th>KGV</th>
+                <th>3J %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in stocks %}
+            <tr>
+                <td><strong>{{ s.name }}</strong></td>
+                <td>{{ s.price }}</td>
+                <td class="{{ 'pos' if s.dist38 >= 0 else 'neg' }}">{{ s.dist38 }}%</td>
+                <td class="{{ 'rsi-warn' if s.rsi != 'N/A' and s.rsi > 70 else '' }}">{{ s.rsi }}</td>
+                <td>{{ s.kgv }}</td>
+                <td class="{{ 'pos' if s.perf3y >= 0 else 'neg' }}">{{ s.perf3y }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
     </table>
+</div>
+
+<script>
+function copyForAI() {
+    let text = "Hier sind meine aktuellen Aktiendaten für die Analyse:\n\n";
+    let rows = document.querySelectorAll("#stockTable tbody tr");
+    rows.forEach(row => {
+        let cols = row.querySelectorAll("td");
+        text += `Ticker: ${cols[0].innerText} | Preis: ${cols[1].innerText} | SMA38-Abst: ${cols[2].innerText} | RSI: ${cols[3].innerText} | KGV: ${cols[4].innerText} | 3J-Perf: ${cols[5].innerText}\n`;
+    });
+    text += "\nBitte analysiere diese Werte auf Kaufchancen oder Risiken.";
+    navigator.clipboard.writeText(text);
+    alert("Daten im Zwischenspeicher! Jetzt einfach bei Gemini einfügen.");
+}
+</script>
+
 </body>
 </html>
