@@ -1,18 +1,44 @@
-    <table border="1">
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aktien-Radar</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f9; }
+        table { border-collapse: collapse; width: 100%; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #333; color: white; }
+        .pos { color: #28a745; font-weight: bold; }
+        .neg { color: #dc3545; font-weight: bold; }
+        input[type="text"] { padding: 8px; width: 200px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>Aktien-Check Live</h2>
+    <form method="POST">
+        <input type="text" name="ticker" placeholder="Ticker eingeben (z.B. MSFT)" required>
+        <button type="submit">Abfrage</button>
+    </form>
+    <br>
+    <table>
         <tr>
             <th>Ticker</th>
             <th>Preis</th>
-            <th>Abstand SMA38 (%)</th>
-            <th>Abstand SMA60 (%)</th>
+            <th>Abstand SMA38</th>
+            <th>Abstand SMA60</th>
             <th>3-Jahre (%)</th>
         </tr>
         {% for s in stocks %}
         <tr>
-            <td>{{ s.name }}</td>
+            <td><strong>{{ s.name }}</strong></td>
             <td>{{ s.price }}</td>
-            <td>{{ s.dist38 }}%</td>
-            <td>{{ s.dist60 }}%</td>
-            <td>{{ s.perf3y }}%</td>
+            <td class="{{ 'pos' if s.dist38 >= 0 else 'neg' }}">{{ s.dist38 }}%</td>
+            <td class="{{ 'pos' if s.dist60 >= 0 else 'neg' }}">{{ s.dist60 }}%</td>
+            <td class="{{ 'pos' if s.perf3y >= 0 else 'neg' }}">{{ s.perf3y }}%</td>
         </tr>
         {% endfor %}
     </table>
+</body>
+</html>
