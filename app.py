@@ -1,31 +1,13 @@
 import yfinance as yf
 from flask import Flask, render_template_string, request, redirect
-import pandas as pd
 
 app = Flask(__name__)
 stored_results = []
 
-def calculate_smart_score(rsi, price, sma38):
-    """Die zentrale Logik: Berechnet die Attraktivität (0-10)."""
-    score = 0
-    # RSI Logik (Günstigkeit)
-    if rsi < 30: score += 6  # Massiv überverkauft
-    elif rsi < 40: score += 4
-    elif rsi > 70: score -= 2 # Heißgelaufen
-    
-    # Trend Logik (SMA38)
-    diff = (price / sma38) - 1
-    if -0.05 < diff < 0: score += 4 # Perfekte Rebound-Zone
-    elif 0 < diff < 0.05: score += 2 # Trendbestätigung
-    
-    return max(0, min(10, score))
-
 def get_market_data(input_val):
-    """Holt Daten für Ticker oder WKN."""
     t = input_val.strip().upper()
-    # Automatik für deutsche Werte (DAX/Nebenwerte)
+    # Automatik für deutsche Werte (WKN-Eingabe oder Ticker)
     search_t = f"{t}.DE" if "." not in t and len(t) <= 6 else t
-    
     try:
         stock = yf.Ticker(search_t)
         df = stock.history(period="60d")
@@ -40,14 +22,15 @@ def get_market_data(input_val):
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean().iloc[-1]
         rsi = round(100 - (100 / (1 + (gain/loss))), 2)
         
-        score = calculate_smart_score(rsi, curr, sma)
+        # Farbe für RSI Badge (wie im Screen)
+        rsi_color = "#00ff88" if rsi < 40 else "#ff4d4d" if rsi > 60 else "#777"
         
         return {
             'ticker': search_t.replace(".DE", ""),
             'price': f"{curr:.2f}",
             'sma38': f"{sma:.2f}",
             'rsi': rsi,
-            'score': score,
+            'rsi_color': rsi_color,
             'status': "OVER" if curr > sma else "UNDER"
         }
     except: return None
@@ -56,39 +39,38 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BASIC Terminal - Smart Score</title>
+    <title>BASIC Terminal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: sans-serif; background: #0a0a0a; color: #eee; padding: 10px; text-align: center; }
-        .container { max-width: 450px; margin: auto; }
-        .input-area { background: #161616; padding: 20px; border-radius: 15px; border: 2px solid #ffd700; margin-bottom: 20px; }
-        input { width: 70%; padding: 12px; border-radius: 8px; border: none; background: #222; color: #fff; font-size: 16px; }
-        .gold-btn { background: #ffd700; color: #000; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        .card { background: #161616; padding: 15px; margin-bottom: 10px; border-radius: 12px; border-left: 5px solid #444; display: flex; justify-content: space-between; align-items: center; text-align: left; }
-        .gold-card { border-left: 5px solid #ffd700 !important; background: linear-gradient(90deg, #161616, #2a2400); }
-        .score-box { text-align: center; background: #222; padding: 8px; border-radius: 8px; min-width: 50px; border: 1px solid #ffd700; }
+        body { font-family: sans-serif; background: #0a0a0a; color: #eee; padding: 15px; text-align: center; }
+        .container { max-width: 500px; margin: auto; }
+        .input-area { background: #1a1a1a; padding: 25px; border-radius: 15px; margin-bottom: 25px; border: 1px solid #333; }
+        input { width: 90%; padding: 15px; background: #222; border: 1px solid #444; color: #fff; border-radius: 10px; margin-bottom: 15px; font-family: monospace; }
+        .gold-btn { background: #ffd700; color: #000; padding: 15px; border: none; border-radius: 10px; width: 95%; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        .card { background: #161616; padding: 20px; margin-bottom: 12px; border-radius: 12px; border-left: 4px solid #ffd700; display: flex; justify-content: space-between; align-items: center; text-align: left; }
+        .rsi-badge { padding: 5px 12px; border-radius: 6px; font-weight: bold; font-size: 0.9em; }
+        .status-text { font-weight: bold; font-size: 0.85em; margin-top: 5px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2 style="color:#ffd700;">BASIC TERMINAL 🚀</h2>
+        <h2 style="color:#ffd700; letter-spacing: 1px;">BASIC TERMINAL 🚀</h2>
         <div class="input-area">
-            <form action="/check" method="POST">
-                <input type="text" name="symbol" placeholder="WKN oder Ticker...">
-                <button type="submit" class="gold-btn">+</button>
+            <form action="/stack" method="POST">
+                <input type="text" name="symbol" placeholder="Ticker eingeben (z.B. BMW, SAP, META)...">
+                <button type="submit" class="gold-btn">ANALYSIEREN & STAPELN</button>
             </form>
         </div>
 
         {% for s in stocks %}
-        <div class="card {{ 'gold-card' if s.score >= 7 else '' }}">
+        <div class="card">
             <div>
-                <strong style="font-size:1.2em;">{{ s.ticker }}</strong><br>
-                <small style="color:#aaa;">{{ s.price }}€ | RSI: {{ s.rsi }}</small><br>
-                <small style="color:{{ '#00ff88' if s.status == 'OVER' else '#ff4d4d' }}">{{ s.status }} SMA38</small>
+                <strong style="font-size:1.3em;">{{ s.ticker }}</strong><br>
+                <span style="color:#aaa;">{{ s.price }}€ | SMA: {{ s.sma38 }}</span><br>
+                <div class="status-text" style="color:{{ '#00ff88' if s.status == 'OVER' else '#ff4d4d' }}">{{ s.status }} SMA38</div>
             </div>
-            <div class="score-box">
-                <div style="font-size: 0.7em; color: #888;">SCORE</div>
-                <div style="font-size: 1.4em; font-weight: bold; color: #ffd700;">{{ s.score }}</div>
+            <div style="text-align: right;">
+                <div class="rsi-badge" style="background: {{ s.rsi_color }}; color: #000;">RSI: {{ s.rsi }}</div>
             </div>
         </div>
         {% endfor %}
@@ -100,11 +82,10 @@ HTML_TEMPLATE = """
 """
 
 @app.route('/')
-def index():
-    return render_template_string(HTML_TEMPLATE, stocks=stored_results)
+def index(): return render_template_string(HTML_TEMPLATE, stocks=stored_results)
 
-@app.route('/check', methods=['POST'])
-def check():
+@app.route('/stack', methods=['POST'])
+def stack():
     global stored_results
     val = request.form.get('symbol', '')
     if val:
